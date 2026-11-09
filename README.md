@@ -18,10 +18,10 @@ That response contains every module with ECTS, semester, grade and status, plus 
 
 ## What it shows
 
-Three views, switchable at any time (your choice is remembered):
+Three views. Click the Grade Lens icon in Chrome's toolbar to choose one (the popup also shows your current average, plan and next exam). Your choice is remembered:
 
-- **Dashboard**: full-screen overview. It shows your current average, where your plan lands, the range still possible, a per-module planner, your grade trajectory over time, and progress toward the ECTS you need for thesis admission.
-- **Drawer**: the same planner in a side panel, with "next up" first.
+- **Advanced**: full-screen dashboard. It shows your current average, where your plan lands, the range still possible, a per-module planner, your grade trajectory over time, and progress toward the ECTS you need for thesis admission.
+- **Basic**: the same planner in a side panel, with "next up" first.
 - **Inline**: no panel at all. A summary bar sits above FOM's own grid, and every open module card gets a date chip, a grade picker and a "need ≥ x" hint.
 
 The core is a **per-module what-if**. For each open module you pick the grade you expect, and the final grade updates live. Modules you don't set run at your pace (your average, rounded to the nearest official grade). Set a target and Grade Lens tells you what the modules you left unset need for it. Partially graded modules (for example 25% participation already done) only use their open share.
@@ -55,7 +55,8 @@ node --test test/model.test.js
 `src/model.js` is pure and fully tested against `test/fixture.studybook.json`, which uses invented modules and grades in the real response shape. No real student data is in this repository.
 
 ```
-manifest.json      MV3, content scripts on oc-digital.de only, storage permission for view + picks
+manifest.json      MV3, content scripts on oc-digital.de only, storage (view + picks) and activeTab (popup talks to the open FOM tab)
+popup/             toolbar popup: Basic / Inline / Advanced + live summary
 src/hook.js        MAIN world, document_start: passive copy of the studybook response
 src/model.js       parsing, averages, final range, target maths (pure)
 src/panel.js       three views (dashboard / drawer / inline), Shadow DOM, SVG charts, no dependencies

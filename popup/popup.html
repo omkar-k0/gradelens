@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" translate="no">
+<head>
+<meta charset="utf-8">
+<title>Grade Lens</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="../icons/icon32.png" width="20" height="20" alt="">
+      <strong>Grade Lens</strong>
+    </div>
+    <span class="muted small">for FOM</span>
+  </header>
+
+  <nav class="views" role="radiogroup" aria-label="View">
+    <button role="radio" data-view="drawer" aria-checked="false">
+      <svg viewBox="0 0 48 32" aria-hidden="true"><rect x="1" y="1" width="46" height="30" rx="4" class="frame"/><rect x="31" y="1" width="16" height="30" rx="0" class="fill"/><rect x="34" y="6" width="10" height="3" rx="1.5" class="ink"/><rect x="34" y="12" width="8" height="3" rx="1.5" class="ink"/><rect x="34" y="18" width="10" height="3" rx="1.5" class="ink"/></svg>
+      <span class="name">Basic</span>
+      <span class="desc">Side panel, next exams first</span>
+    </button>
+    <button role="radio" data-view="inline" aria-checked="false">
+      <svg viewBox="0 0 48 32" aria-hidden="true"><rect x="1" y="1" width="46" height="30" rx="4" class="frame"/><rect x="5" y="5" width="38" height="5" rx="2" class="fill"/><rect x="5" y="13" width="11" height="14" rx="2" class="frame2"/><rect x="18.5" y="13" width="11" height="14" rx="2" class="frame2"/><rect x="32" y="13" width="11" height="14" rx="2" class="frame2"/><rect x="7" y="22" width="7" height="3" rx="1.5" class="ink"/><rect x="20.5" y="22" width="7" height="3" rx="1.5" class="ink"/><rect x="34" y="22" width="7" height="3" rx="1.5" class="ink"/></svg>
+      <span class="name">Inline</span>
+      <span class="desc">On FOM's own module cards</span>
+    </button>
+    <button role="radio" data-view="dashboard" aria-checked="false">
+      <svg viewBox="0 0 48 32" aria-hidden="true"><rect x="1" y="1" width="46" height="30" rx="4" class="fill"/><rect x="5" y="5" width="38" height="7" rx="2" class="paper"/><rect x="5" y="15" width="22" height="12" rx="2" class="paper"/><rect x="30" y="15" width="13" height="12" rx="2" class="paper"/><path d="M32 24l3-3 2 2 4-5" class="line"/></svg>
+      <span class="name">Advanced</span>
+      <span class="desc">Full dashboard and planner</span>
+    </button>
+  </nav>
+
+  <section class="status" aria-live="polite"></section>
+
+  <footer class="muted small">Computed in your browser. Grades never leave it.</footer>
+  <script src="popup.js"></script>
+</body>
+</html>

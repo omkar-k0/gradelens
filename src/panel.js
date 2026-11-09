@@ -14,10 +14,11 @@
   window.__gradeLensLoaded = true;
 
   const STUDY_PROGRESS_PATH = "/node/6148";
+  // internal id -> label shown to the user
   const VIEWS = [
-    ["dashboard", "Dashboard"],
-    ["drawer", "Drawer"],
+    ["drawer", "Basic"],
     ["inline", "Inline"],
+    ["dashboard", "Advanced"],
   ];
   const state = { data: null, error: null, view: "dashboard", target: 1.5, overrides: {}, open: false };
 
@@ -46,11 +47,23 @@
   const fmt2 = (g) => (typeof g === "number" ? g.toFixed(2).replace(".", ",") : "–");
   const fmtReq = (g) => (typeof g === "number" ? (Math.floor(g * 100 + 1e-9) / 100).toFixed(2).replace(".", ",") : "–");
   const fmtDate = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}` : "date tbd");
-  const daysUntil = (iso) => (iso ? Math.ceil((new Date(iso + "T12:00:00") - new Date()) / 86400000) : null);
+  const daysUntil = (iso) => {
+    if (!iso) return null;
+    const now = new Date();
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const [y, m, d] = iso.split("-").map(Number);
+    return Math.round((Date.UTC(y, m - 1, d) - today) / 86400000); // calendar days
+  };
   const ects = (x) => (Math.round(x * 10) / 10).toString().replace(".", ",");
+
+  function noTranslate(el) {
+    el.setAttribute("translate", "no");
+    el.classList.add("notranslate");
+  }
 
   // ---------- shared tooltip (its own shadow root so every view can use it) ----------
   const tipHost = document.createElement("div");
+  noTranslate(tipHost);
   tipHost.style.cssText = "all:initial;position:fixed;z-index:2147483647;left:0;top:0;pointer-events:none;";
   const tipRoot = tipHost.attachShadow({ mode: "open" });
   tipRoot.innerHTML = `<style>.t{position:fixed;max-width:300px;padding:6px 9px;background:#0b0b0b;color:#fcfcfb;border-radius:6px;
@@ -76,6 +89,7 @@
   // ---------- main shell: launcher + overlay (dashboard/drawer) ----------
   const host = document.createElement("div");
   host.id = "grade-lens-root";
+  noTranslate(host);
   host.style.cssText = "all:initial;position:fixed;z-index:2147483646;left:0;top:0;";
   const root = host.attachShadow({ mode: "open" });
   root.innerHTML = `<style>${BASE_CSS()}${SHELL_CSS()}</style>
@@ -144,6 +158,40 @@
     }
     renderAll();
   });
+
+  // ---------- toolbar popup ----------
+  function summary() {
+    if (!state.data) return { view: state.view, hasData: false, error: state.error };
+    const { d, wi } = compute();
+    return {
+      view: state.view,
+      hasData: true,
+      now: fmt(d.average.final),
+      plan: fmt(wi.projected),
+      range: `${fmt(d.range.best)}–${fmt(d.range.worst)}`,
+      target: fmt(state.target),
+      next: wi.perModule[0] ? { name: wi.perModule[0].name, date: fmtDate(wi.perModule[0].nextDate), days: daysUntil(wi.perModule[0].nextDate) } : null,
+    };
+  }
+  try {
+    chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+      if (!msg || typeof msg.type !== "string") return;
+      if (msg.type === "gl-get") reply(summary());
+      else if (msg.type === "gl-set-view" && VIEWS.some(([v]) => v === msg.view)) {
+        state.view = msg.view;
+        state.open = msg.view !== "inline";
+        store.save();
+        renderAll();
+        reply(summary());
+      } else if (msg.type === "gl-hide") {
+        state.open = false;
+        renderAll();
+        reply(summary());
+      }
+    });
+  } catch (_) {
+    /* outside the extension (test harness) */
+  }
 
   // ---------- derived ----------
   function compute() {
@@ -421,6 +469,7 @@
     if (!inlineBar || !inlineBar.isConnected) {
       inlineBar = document.createElement("div");
       inlineBar.className = "gl-bar-host";
+      noTranslate(inlineBar);
       inlineBar.style.cssText = "all:initial;display:block;margin:0 8px 12px;";
       const sr = inlineBar.attachShadow({ mode: "open" });
       sr.innerHTML = `<style>${BASE_CSS()}${INLINE_CSS()}</style><div class="ibar"></div>`;
@@ -462,6 +511,7 @@
       if (!hostEl) {
         hostEl = document.createElement("div");
         hostEl.className = "gl-badge-host";
+        noTranslate(hostEl);
         hostEl.style.cssText = "all:initial;display:block;padding:0 16px 14px;";
         const sr = hostEl.attachShadow({ mode: "open" });
         sr.innerHTML = `<style>${BASE_CSS()}${BADGE_CSS()}</style><div class="bd"></div>`;
