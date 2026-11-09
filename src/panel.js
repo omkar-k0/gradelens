@@ -14,6 +14,8 @@
   window.__gradeLensLoaded = true;
 
   const STUDY_PROGRESS_PATH = "/node/6148";
+  const STUDYBOOK_URL = /^https:\/\/oc-digital\.de\/campus\/api\/epm\/studybook\/\d{1,12}(\?[^#]*)?$/;
+  const MAX_PAYLOAD = 5 * 1024 * 1024; // the real response is ~110 KB
   // internal id -> label shown to the user
   const VIEWS = [
     ["drawer", "Basic"],
@@ -46,7 +48,9 @@
   const fmt = (g) => (typeof g === "number" ? g.toFixed(1).replace(".", ",") : "–");
   const fmt2 = (g) => (typeof g === "number" ? g.toFixed(2).replace(".", ",") : "–");
   const fmtReq = (g) => (typeof g === "number" ? (Math.floor(g * 100 + 1e-9) / 100).toFixed(2).replace(".", ",") : "–");
-  const fmtDate = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}` : "date tbd");
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const fmtDate = (iso) => (typeof iso === "string" && ISO.test(iso) ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}` : "date tbd");
+  const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const daysUntil = (iso) => {
     if (!iso) return null;
     const now = new Date();
@@ -150,11 +154,23 @@
     if (e.source !== window || e.origin !== location.origin) return;
     const d = e.data;
     if (!d || d.source !== "fom-grade-lens" || d.kind !== "studybook") return;
+    // Untrusted channel: any script on the page can post here. Check what we can, and
+    // rely on the model's validation boundary plus escaping for the rest.
+    if (typeof d.url !== "string" || !STUDYBOOK_URL.test(d.url)) return;
+    if (typeof d.text !== "string" || d.text.length > MAX_PAYLOAD) {
+      state.error = "The study book response was too large to read safely.";
+      renderAll();
+      return;
+    }
     try {
       state.data = M.analyse(JSON.parse(d.text));
       state.error = null;
     } catch (err) {
-      state.error = `Could not read the study book: ${err.message}. FOM may have changed its data format.`;
+      state.error =
+        err && err.code === "UNSUPPORTED_GRADING"
+          ? `${err.message}. Grade Lens only understands FOM's 1,0–4,0 scale so far.`
+          : `Could not read the study book: ${err && err.message}. FOM may have changed its data format.`;
+      state.data = null;
     }
     renderAll();
   });
@@ -203,18 +219,22 @@
   // ---------- render orchestration ----------
   function renderAll() {
     root.querySelector(".dot").hidden = !state.data;
-    launcher.hidden = state.open || (state.view === "inline" && !!state.data);
+    const inlineWorking = state.view === "inline" && !!state.data && !state.error;
+    launcher.hidden = state.open || inlineWorking;
+    launcher.classList.toggle("warn", !!state.error);
     renderOverlay();
     renderInline();
   }
 
   function renderOverlay() {
-    const show = state.open && state.view !== "inline";
+    // inline has no panel of its own, so errors / empty states fall back to the drawer frame
+    const inlineFallback = state.view === "inline" && (!state.data || !!state.error);
+    const show = state.open && (state.view !== "inline" || inlineFallback);
     overlay.hidden = !show;
     if (!show) return;
-    overlay.className = `overlay ${state.view}`;
+    overlay.className = `overlay ${inlineFallback ? "drawer" : state.view}`;
     let inner;
-    if (state.error) inner = shellFrame(`<div class="empty warn">${esc(state.error)}</div>`);
+    if (state.error) inner = shellFrame(`<div class="empty warn" role="alert">${esc(state.error)}</div>`);
     else if (!state.data) inner = shellFrame(emptyState());
     else inner = state.view === "dashboard" ? dashboardView() : drawerView();
     overlay.innerHTML = state.view === "dashboard" ? `<div class="backdrop" data-act="backdrop">${inner}</div>` : inner;
@@ -222,7 +242,7 @@
   }
 
   function shellFrame(body) {
-    return `<section class="frame"><header class="bar">${brand()}${viewSwitch()}<button class="icon" data-act="close" aria-label="Close">✕</button></header><div class="scroll">${body}</div></section>`;
+    return `<section class="frame drawer"><header class="bar">${brand()}${viewSwitch()}<button class="icon" data-act="close" aria-label="Close">✕</button></header><div class="scroll">${body}</div></section>`;
   }
   const brand = () => `<div class="brand"><strong>Grade Lens</strong><span class="muted small">computed in your browser · nothing leaves it</span></div>`;
   const emptyState = () => `<div class="empty"><p>No grade data on this page yet.</p>
@@ -314,7 +334,7 @@
     const opts = [`<option value="pace"${m.source === "pace" ? " selected" : ""}>pace ${fmt(m.expected)}</option>`]
       .concat(M.GRADE_STEPS.map((s) => `<option value="${s}"${m.source === "you" && m.expected === s ? " selected" : ""}>${fmt(s)}</option>`))
       .join("");
-    return `<select data-mod="${m.id}" class="${m.source}" aria-label="Expected grade for ${esc(m.name)}">${opts}</select>`;
+    return `<select data-mod="${esc(m.id)}" class="${m.source}" aria-label="Expected grade for ${esc(m.name)}">${opts}</select>`;
   }
 
   function whenChip(iso) {
@@ -343,7 +363,7 @@
         const parts = m.openParts.map((p) => `${esc(p.name)} ${Math.round(p.weight * 100)}%`).join(" · ");
         const done = m.knownWeight > 0 ? ` · ${Math.round(m.knownWeight * 100)}% already graded` : "";
         return `<div class="row">
-          <div class="who"><b>${esc(m.name)}</b><span class="muted small">${m.credits} ECTS · ${parts}${done}</span></div>
+          <div class="who"><b>${esc(m.name)}</b><span class="muted small">${num(m.credits)} ECTS · ${parts}${done}</span>${m.retake ? `<span class="retake" data-tip="A previous attempt was not passed; this is a retake">retake</span>` : ""}</div>
           <div class="when">${whenChip(m.nextDate)}</div>
           ${compact ? "" : `<div class="lev" data-tip="${Math.round(m.leverage * 100)}% of everything still open is in this module"><i style="width:${Math.max(3, Math.round(m.leverage * 100))}%"></i><span class="small">${Math.round(m.leverage * 100)}%</span></div>`}
           ${compact ? "" : moduleSpan(m)}
@@ -400,7 +420,7 @@
     const last = pts[pts.length - 1];
     const dots = pts
       .map(
-        (p) => `<g data-tip="${esc(`${p.module} · ${fmt(p.grade)} · ${p.credits} ECTS · ${fmtDate(p.date)} · running average ${fmt(p.runningAverage)}`)}">
+        (p) => `<g data-tip="${esc(`${p.module} · ${fmt(p.grade)} · ${num(p.credits)} ECTS · ${fmtDate(p.date)} · running average ${fmt(p.runningAverage)}`)}">
         <circle cx="${xs(p.date)}" cy="${ys(p.grade)}" r="11" class="hit"/><circle cx="${xs(p.date)}" cy="${ys(p.grade)}" r="4.5" class="g"/></g>`
       )
       .join("");
@@ -413,7 +433,7 @@
 
   function meter(label, v, of) {
     const pct = Math.round((v / of) * 100);
-    return `<div class="meter"><div class="meterTop"><span>${esc(label)}</span><b>${v}<span class="muted"> / ${of}</span></b></div>
+    return `<div class="meter"><div class="meterTop"><span>${esc(label)}</span><b>${num(v)}<span class="muted"> / ${num(of)}</span></b></div>
       <span class="mbar" role="img" aria-label="${pct}%"><i style="width:${pct}%"></i></span></div>`;
   }
 
@@ -425,8 +445,14 @@
   }
 
   // ---------- inline view: summary bar + badges on FOM's own cards ----------
+  // Two separate jobs:
+  //   attach  keep our hosts in FOM's DOM (FOM is a Vue SPA and re-renders on its own)
+  //   render  fill the hosts; only when OUR state changes, never because FOM's DOM moved
+  // The MutationObserver only ever attaches, so an open grade picker is never torn down.
   let inlineBar = null;
   let observer = null;
+  let expectedBadges = 0;
+  let lastCardCount = -1;
 
   function renderInline() {
     const on = state.view === "inline" && !!state.data && !state.error;
@@ -434,38 +460,61 @@
       removeInline();
       return;
     }
-    placeBar();
-    placeBadges();
+    attachInline(true);
     if (!observer) {
       let pending = null;
       observer = new MutationObserver(() => {
         if (pending) return;
         pending = setTimeout(() => {
           pending = null;
-          if (state.view === "inline") {
-            placeBar();
-            placeBadges();
-          }
-        }, 300);
+          if (state.view !== "inline") return;
+          // cheap guard: nothing of ours went missing -> no DOM reads at all
+          if (
+            inlineBar &&
+            inlineBar.isConnected &&
+            document.querySelectorAll(".course-element").length === lastCardCount &&
+            document.querySelectorAll(".gl-badge-host").length === expectedBadges
+          )
+            return;
+          attachInline(false);
+        }, 250);
       });
       observer.observe(document.body, { childList: true, subtree: true });
     }
+  }
+
+  function attachInline(rerender) {
+    const ctx = compute();
+    placeBar(ctx, rerender);
+    placeBadges(ctx, rerender);
   }
 
   function removeInline() {
     if (observer) observer.disconnect(), (observer = null);
     if (inlineBar) inlineBar.remove(), (inlineBar = null);
     document.querySelectorAll(".gl-badge-host").forEach((n) => n.remove());
+    expectedBadges = 0;
+    lastCardCount = -1;
   }
 
-  function placeBar() {
-    const firstSem = document.querySelector(".semester-header");
-    if (!firstSem) return;
-    // the grid that holds every semester column
-    let grid = firstSem;
-    while (grid.parentElement && grid.parentElement.querySelectorAll(".semester-header").length < document.querySelectorAll(".semester-header").length)
-      grid = grid.parentElement;
-    grid = grid.parentElement || grid;
+  // smallest element that contains every semester column
+  function findGrid() {
+    const heads = document.querySelectorAll(".semester-header");
+    if (!heads.length) return null;
+    const last = heads[heads.length - 1];
+    let node = heads[0].parentElement;
+    while (node && !node.contains(last)) node = node.parentElement;
+    return node && node.parentElement ? node : null;
+  }
+
+  function placeBar({ d, wi }, rerender) {
+    const grid = findGrid();
+    if (!grid) {
+      // FOM navigated away or swapped the layout: don't leave an orphaned bar behind
+      if (inlineBar) inlineBar.remove(), (inlineBar = null);
+      return;
+    }
+    let fresh = false;
     if (!inlineBar || !inlineBar.isConnected) {
       inlineBar = document.createElement("div");
       inlineBar.className = "gl-bar-host";
@@ -474,9 +523,10 @@
       const sr = inlineBar.attachShadow({ mode: "open" });
       sr.innerHTML = `<style>${BASE_CSS()}${INLINE_CSS()}</style><div class="ibar"></div>`;
       wireActions(sr);
-      grid.parentElement.insertBefore(inlineBar, grid);
+      fresh = true;
     }
-    const { d, wi } = compute();
+    if (inlineBar.nextElementSibling !== grid) grid.parentElement.insertBefore(inlineBar, grid);
+    if (!fresh && !rerender) return;
     const sr = inlineBar.shadowRoot;
     sr.querySelector(".ibar").innerHTML = `
       <div class="ib-left"><strong>Grade Lens</strong>
@@ -485,29 +535,44 @@
         <span class="kv"><span class="muted small">possible</span><b>${fmt(d.range.best)}–${fmt(d.range.worst)}</b></span>
         ${targetControl()}</div>
       <div class="ib-right">${viewSwitch()}</div>
-      <div class="ib-need">${needBanner(wi)}<span class="muted small">Set your expected grade on each open module card below. ${resetBtn()}</span></div>`;
+      <div class="ib-need">${needBanner(wi)}<span class="muted small">${badgeNote()} ${resetBtn()}</span></div>`;
     wireTips(sr);
   }
 
-  function placeBadges() {
-    const { d, wi } = compute();
-    const cards = [...document.querySelectorAll(".course-element")];
-    // fail safe: only attach when the cards line up 1:1 with the data (count and ECTS order)
-    const ok =
+  let badgesMatched = true;
+  const badgeNote = () =>
+    badgesMatched
+      ? "Set your expected grade on each open module card below."
+      : "FOM's card layout doesn't match the data right now, so card badges are off. Use Basic or Advanced to plan.";
+
+  function placeBadges({ d, wi }, rerender) {
+    const cards = document.querySelectorAll(".course-element");
+    lastCardCount = cards.length;
+    // fail safe: only attach when the cards line up 1:1 with the data (count and ECTS order).
+    // textContent, not innerText: no forced layout on every check.
+    const matched =
       cards.length === d.modules.length &&
-      cards.every((c, i) => new RegExp(`^\\s*${d.modules[i].credits}\\s*ECTS`).test(c.innerText));
-    if (!ok) {
+      [...cards].every((c, i) => new RegExp(`^\\s*${num(d.modules[i].credits)}\\s*ECTS`).test(c.textContent));
+    if (matched !== badgesMatched) {
+      badgesMatched = matched;
+      if (inlineBar && inlineBar.isConnected) placeBar({ d, wi }, true); // update the note
+    }
+    if (!matched) {
       document.querySelectorAll(".gl-badge-host").forEach((n) => n.remove());
+      expectedBadges = 0;
       return;
     }
-    const byId = Object.fromEntries(wi.perModule.map((m) => [String(m.id), m]));
+    const byId = new Map(wi.perModule.map((m) => [String(m.id), m]));
+    let count = 0;
     cards.forEach((card, i) => {
-      const m = byId[String(d.modules[i].id)];
+      const m = byId.get(String(d.modules[i].id));
       let hostEl = card.querySelector(":scope .gl-badge-host");
       if (!m) {
         if (hostEl) hostEl.remove();
         return;
       }
+      count++;
+      let fresh = false;
       if (!hostEl) {
         hostEl = document.createElement("div");
         hostEl.className = "gl-badge-host";
@@ -517,15 +582,19 @@
         sr.innerHTML = `<style>${BASE_CSS()}${BADGE_CSS()}</style><div class="bd"></div>`;
         wireActions(sr);
         (card.firstElementChild || card).appendChild(hostEl);
+        fresh = true;
       }
+      if (!fresh && !rerender) return;
       const need = wi.need && wi.need.status === "reachable" && m.source === "pace" ? `need ≥ ${fmt(wi.need.step)}` : "";
       hostEl.shadowRoot.querySelector(".bd").innerHTML = `
         ${whenChip(m.nextDate)}
+        ${m.retake ? `<span class="retake">retake</span>` : ""}
         <span class="pk"><span class="muted small">pick</span>${gradeSelect(m)}</span>
         <span class="res" data-tip="Module grade with this pick · can still end ${fmt(m.moduleBest)}–${fmt(m.moduleWorst)}">→ ${fmt(m.projectedModuleGrade)}</span>
         ${need ? `<span class="needchip">${need}</span>` : ""}`;
       wireTips(hostEl.shadowRoot);
     });
+    expectedBadges = count;
   }
 
   // ---------- styles ----------
@@ -587,6 +656,8 @@
     .launcher { position: fixed; left: 72px; bottom: 18px; display: flex; gap: 8px; align-items: center; padding: 9px 14px; cursor: pointer;
       background: #fff; border: 1px solid #dcdcd7; border-radius: 999px; box-shadow: 0 4px 18px rgba(0,0,0,.12); font-weight: 600; }
     .launcher:hover { border-color: #2a78d6; }
+    .launcher.warn { border-color: #d03b3b; }
+    .launcher.warn .dot { background: #d03b3b; }
     .launcher .dot { width: 7px; height: 7px; border-radius: 50%; background: #2a78d6; }
     .frame { background: #fcfcfb; display: flex; flex-direction: column; }
     .bar { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid #ecece8; background: #fff; }
@@ -615,6 +686,7 @@
     .wi.compact .row { grid-template-columns: minmax(0, 1fr) auto 84px 30px; gap: 8px; }
     .wi .row.head { font-size: 11px; color: #6b6a65; padding: 0 0 6px; }
     .wi .who { display: flex; flex-direction: column; min-width: 0; } .wi .who b { font-weight: 600; }
+    .retake { display: inline-block; margin-top: 3px; font-size: 10px; padding: 0 6px; border-radius: 4px; background: #fdf0e8; color: #9a3a0d; width: fit-content; }
     .wi .res { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
     .wi .lev { display: flex; align-items: center; gap: 6px; }
     .wi .lev i { display: block; height: 6px; background: #2a78d6; border-radius: 3px; max-width: 48px; }
@@ -641,6 +713,7 @@
     .bd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding-top: 10px; border-top: 1px dashed #e4e4df; }
     .pk { display: inline-flex; align-items: center; gap: 4px; }
     .res { font-weight: 650; font-variant-numeric: tabular-nums; font-size: 12px; }
+    .retake { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #fdf0e8; color: #9a3a0d; }
     .needchip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eaf2fc; color: #1d5aa6; }`;
   }
 

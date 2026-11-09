@@ -1,0 +1,10 @@
+{
+  "name": "fom-grade-lens",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Chrome extension: FOM grade trajectory, final-grade range and per-module what-if. Runs entirely in the browser.",
+  "scripts": {
+    "test": "node --test test/model.test.js test/stress.test.js",
+    "test:e2e": "python3 test/e2e/run_all.py"
+  }
+}

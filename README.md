@@ -1,68 +1,66 @@
-# Grade Lens for FOM
+# GradeLens
 
-A Chrome extension for FOM students. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target.
+A Chrome extension for students at FOM University of Applied Sciences. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target.
 
-It runs entirely in your browser. There is no server, no account and no stored data.
+It runs entirely in your browser. There is no server, no account, and no data sent anywhere.
 
-## How it gets the data
+![Advanced view](docs/advanced.png)
 
-The FOM Online Campus (`oc-digital.de`) is a Vue app. When you open **Study program & exams → Study progress**, it already calls
+*Screenshots use synthetic test data.*
 
-```
-GET /campus/api/epm/studybook/{studiengangId}
-```
+## Features
 
-That response contains every module with ECTS, semester, grade and status, plus each assessment's weight (for example 75% exam / 25% participation), partial grades and exam dates.
+- **Three views**, chosen from the toolbar popup:
+  - **Basic**: a side panel with your next exams first
+  - **Inline**: a summary bar plus a grade picker on each of FOM's own module cards
+  - **Advanced**: a full dashboard with planner, trajectory and progress
+- **Per-module what-if:** pick the grade you expect in each open module and see your final grade update live.
+- **Target setter:** choose a target final grade and see what the modules you haven't planned yet need.
+- **Final grade range:** best and worst case, and how much of your grade is already locked in.
+- **Exam countdown:** your next exam dates, with exams in the next 14 days highlighted.
 
-`src/hook.js` runs in the page and copies that response as the app receives it. It never reads tokens or cookies and never sends its own requests to FOM. The panel computes everything in memory and forgets it when you close the tab.
+| Basic | Inline | Popup |
+|---|---|---|
+| ![Basic](docs/basic.png) | ![Inline](docs/inline.png) | ![Popup](docs/popup.png) |
 
-## What it shows
+## How it works
 
-Three views. Click the Grade Lens icon in Chrome's toolbar to choose one (the popup also shows your current average, plan and next exam). Your choice is remembered:
-
-- **Advanced**: full-screen dashboard. It shows your current average, where your plan lands, the range still possible, a per-module planner, your grade trajectory over time, and progress toward the ECTS you need for thesis admission.
-- **Basic**: the same planner in a side panel, with "next up" first.
-- **Inline**: no panel at all. A summary bar sits above FOM's own grid, and every open module card gets a date chip, a grade picker and a "need ≥ x" hint.
-
-The core is a **per-module what-if**. For each open module you pick the grade you expect, and the final grade updates live. Modules you don't set run at your pace (your average, rounded to the nearest official grade). Set a target and Grade Lens tells you what the modules you left unset need for it. Partially graded modules (for example 25% participation already done) only use their open share.
-
-Your view, target and picks are saved in `chrome.storage.local` on your device. Grades themselves are never stored.
-
-## Assumptions (read these)
-
-| Rule | Status |
-|---|---|
-| Grades are truncated after the first decimal, not rounded | **Observed** in the portal: 0.75×2.7 + 0.25×3.3 = 2.85 is shown as 2.8 |
-| Final grade = ECTS-weighted mean of all graded modules, thesis module included with its credits | **Unverified**. Check the Rahmenprüfungsordnung / Fachspezifische Prüfungsordnung |
-| Ungraded passes count for ECTS only | Follows from the data (no grade field) |
-| Every listed module with credits counts toward the final grade | **Unverified**. A module such as a language course may be excluded by the PO |
-
-"What you need" assumes the same grade across all open assessments. It's a planning number, not a guarantee.
-
-## Install (developer mode)
-
-1. Download and unzip this folder.
-2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, pick the folder.
-3. Open the FOM Online Campus → **Study program & exams → Study progress**.
-4. Click **Grade Lens** at the bottom left.
-
-## Development
+The FOM Online Campus already loads your study book from an internal JSON endpoint (`/campus/api/epm/studybook/{id}`). GradeLens copies that response as the page receives it. It never reads tokens or cookies and makes no requests of its own. All calculations happen locally.
 
 ```
-node --test test/model.test.js
+src/hook.js      copies the study book response the portal already loads
+src/model.js     parsing, validation, averages, final range, what-if (pure functions)
+src/panel.js     the three views (Shadow DOM, SVG charts, no dependencies)
+popup/           toolbar popup to switch views
 ```
 
-`src/model.js` is pure and fully tested against `test/fixture.studybook.json`, which uses invented modules and grades in the real response shape. No real student data is in this repository.
+## Install
+
+1. Download or clone this repo.
+2. Open `chrome://extensions` and turn on **Developer mode**.
+3. Click **Load unpacked** and select the repo folder.
+4. Open the FOM Online Campus → **Study program & exams → Study progress**.
+5. Click the GradeLens icon in the toolbar and pick a view.
+
+## Assumptions
+
+- Grades are truncated after the first decimal, as the portal does for module grades.
+- The final grade is taken as the ECTS-weighted mean of all graded modules. This is not yet verified against the Prüfungsordnung.
+- Only passed modules with a grade from 1,0 to 4,0 count. A failed attempt makes the module an open retake.
+
+## Security
+
+All data from the portal is treated as untrusted. It is validated in one place and escaped when rendered. Messages from the page are only accepted for the study book URL. Permissions are limited to `storage` (your view and picks) and `activeTab` (for the popup).
+
+## Tests
 
 ```
-manifest.json      MV3, content scripts on oc-digital.de only, storage (view + picks) and activeTab (popup talks to the open FOM tab)
-popup/             toolbar popup: Basic / Inline / Advanced + live summary
-src/hook.js        MAIN world, document_start: passive copy of the studybook response
-src/model.js       parsing, averages, final range, target maths (pure)
-src/panel.js       three views (dashboard / drawer / inline), Shadow DOM, SVG charts, no dependencies
-test/              node:test unit tests + synthetic fixture
+npm test            # unit and stress tests
+npm run test:e2e    # browser tests (Playwright; set CHROME_PATH to use a local Chrome)
 ```
 
-## Not affiliated with FOM
+## Disclaimer
 
-This is an independent student project. It depends on an internal API that FOM can change at any time; if that happens, the panel shows an error instead of wrong numbers.
+Independent student project, not affiliated with FOM. It depends on an internal portal API that may change at any time.
+
+Built with the help of an AI model.

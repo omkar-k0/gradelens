@@ -8,7 +8,9 @@
   const WANT = /\/campus\/api\/epm\/studybook\/\d+/;
   let last = null; // kept in page memory only, so a late-loading panel can ask for it
   const post = (url, text) => {
-    last = { url: String(url), text };
+    let abs;
+    try { abs = new URL(String(url), location.href).href; } catch (_) { return; }
+    last = { url: abs, text };
     window.postMessage({ source: "fom-grade-lens", kind: "studybook", ...last }, location.origin);
   };
   window.addEventListener("message", (e) => {

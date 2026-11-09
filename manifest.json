@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Grade Lens for FOM",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Your FOM grade trajectory, final-grade range and what you need in each open exam. Runs entirely in your browser.",
   "permissions": [
     "storage",
@@ -42,5 +42,6 @@
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
     }
-  }
+  },
+  "minimum_chrome_version": "111"
 }

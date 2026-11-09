@@ -37,61 +37,127 @@
     return m ? Number(m[1]) : fallback;
   }
 
+  // ---------- validation boundary: everything from FOM is untrusted ----------
+  const SUPPORTED_GRADING = ["NummerischCredits4+"]; // German 1,0–4,0 numeric scale
+  const PASSED = "bestanden";
+  const FAILED = /nicht\s*bestanden|failed/i;
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const MAX_TEXT = 160;
+
+  const safeText = (v, fallback) => {
+    const s = typeof v === "string" || typeof v === "number" ? String(v) : "";
+    const t = s.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, MAX_TEXT);
+    return t || fallback;
+  };
+  // ids are integers in FOM's data; anything else is replaced by a safe synthetic id
+  const safeId = (v, fallback) => {
+    const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,12}$/.test(v) ? Number(v) : NaN;
+    return Number.isSafeInteger(n) && n >= 0 ? n : fallback;
+  };
+  const safeIso = (v) => (typeof v === "string" && ISO_DATE.test(v) ? v : null);
+  const safeCredits = (v) => (isNum(v) && v >= 0 && v <= 60 ? v : 0);
+  // a usable grade: on the 1,0–4,0 scale and not a failed attempt
+  function usableGrade(note) {
+    if (!note || !isNum(note.note)) return { grade: null, failed: false, invalid: false };
+    const failed = FAILED.test(String(note.status || "")) || note.note > WORST;
+    if (failed) return { grade: null, failed: true, invalid: false };
+    if (note.note < BEST) return { grade: null, failed: false, invalid: true };
+    return { grade: note.note, failed: false, invalid: false };
+  }
+
   // Open part: the earliest date that is still ahead (a registered attempt or the scheduled
   // termin); if all are past, the latest one. Graded part: when the result was taken.
   function pickDate(p, grade, today) {
-    const resultDates = (p.pruefungsergebnisse || [])
-      .map((r) => parseGermanDate(r.onlydatum) || parseGermanDate(r.datum))
+    const resultDates = (Array.isArray(p.pruefungsergebnisse) ? p.pruefungsergebnisse : [])
+      .map((r) => (r ? parseGermanDate(r.onlydatum) || parseGermanDate(r.datum) : null))
       .filter(Boolean)
       .sort();
     if (grade !== null) return resultDates[resultDates.length - 1] || null;
-    const all = resultDates.concat(p.pruefungstermin && p.pruefungstermin.datum ? [p.pruefungstermin.datum] : []).sort();
+    const termin = safeIso(p.pruefungstermin && p.pruefungstermin.datum);
+    const all = resultDates.concat(termin ? [termin] : []).sort();
     if (all.length === 0) return null;
     return all.find((d) => d >= today) || all[all.length - 1];
   }
 
-  function parsePart(p, today) {
-    const grade = isNum(p.note && p.note.note) ? p.note.note : null;
+  function parsePart(p, today, idx, issues, moduleName) {
+    p = p && typeof p === "object" ? p : {};
+    const g = usableGrade(p.note);
+    if (g.invalid) issues.push(`${moduleName}: grade ${p.note.note} is outside 1,0–4,0 and was ignored`);
     return {
-      id: p.pruefungid,
-      name: p.name || p.pruefung || "Assessment",
-      type: p.pruefungstyp || null,
-      weight: parseWeight(p.gewichtung),
-      grade,
-      status: (p.note && p.note.status) || null,
-      date: pickDate(p, grade, today),
+      id: safeId(p.pruefungid, `p${idx}`),
+      name: safeText(p.name || p.pruefung, "Assessment"),
+      type: safeText(p.pruefungstyp, null),
+      weight: (() => {
+        const w = parseWeight(p.gewichtung);
+        return w !== null && w >= 0 && w <= 1 ? w : null;
+      })(),
+      grade: g.grade,
+      failed: g.failed,
+      status: safeText(p.note && p.note.status, null),
+      date: pickDate(p, g.grade, today),
       attemptsAllowed: isNum(p.anzahlversuche) ? p.anzahlversuche : null,
     };
   }
 
   function normaliseWeights(parts) {
-    if (parts.length === 0) return { parts, weightsAssumed: false };
+    if (parts.length === 0) return { parts, weightsAssumed: false, weightSum: 1 };
     if (parts.length === 1) {
-      return { parts: [{ ...parts[0], weight: 1 }], weightsAssumed: false };
+      return { parts: [{ ...parts[0], weight: 1 }], weightsAssumed: false, weightSum: 1 };
     }
     const known = parts.filter((p) => isNum(p.weight));
     if (known.length === parts.length) {
-      const sum = known.reduce((a, p) => a + p.weight, 0) || 1;
-      return { parts: parts.map((p) => ({ ...p, weight: p.weight / sum })), weightsAssumed: false };
+      const sum = known.reduce((a, p) => a + p.weight, 0);
+      if (sum <= 0) {
+        const eq = 1 / parts.length;
+        return { parts: parts.map((p) => ({ ...p, weight: eq })), weightsAssumed: true, weightSum: sum };
+      }
+      return { parts: parts.map((p) => ({ ...p, weight: p.weight / sum })), weightsAssumed: false, weightSum: sum };
     }
     const eq = 1 / parts.length;
-    return { parts: parts.map((p) => ({ ...p, weight: eq })), weightsAssumed: true };
+    return { parts: parts.map((p) => ({ ...p, weight: eq })), weightsAssumed: true, weightSum: null };
   }
 
-  const todayISO = () => new Date().toISOString().slice(0, 10);
+  // the student's local calendar day (the portal and its exams are in German time)
+  const todayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  function gradingSystem(sb) {
+    const cands = [sb.stn && sb.stn.notensystem].concat((Array.isArray(sb.stnlist) ? sb.stnlist : []).map((x) => x && x.notensystem));
+    return cands.find((x) => typeof x === "string" && x) || null;
+  }
 
   function parseStudybook(sb, opts) {
-    if (!sb || !Array.isArray(sb.modulebereiche4list)) {
+    if (!sb || typeof sb !== "object" || !Array.isArray(sb.modulebereiche4list)) {
       throw new Error("Unexpected studybook shape: modulebereiche4list missing");
+    }
+    const system = gradingSystem(sb);
+    if (system && !SUPPORTED_GRADING.includes(system)) {
+      const e = new Error(`Grading system "${safeText(system, "?")}" is not supported yet`);
+      e.code = "UNSUPPORTED_GRADING";
+      throw e;
     }
     const today = (opts && opts.today) || todayISO();
     const modules = [];
+    const issues = [];
+    let idx = 0;
     sb.modulebereiche4list.forEach((area, i) => {
+      area = area && typeof area === "object" ? area : {};
       const semester = semesterFromAreaName(area.name, i + 1);
-      (area.module || []).forEach((m) => {
-        const { parts, weightsAssumed } = normaliseWeights((m.pruefungen || []).map((p) => parsePart(p, today)));
-        const moduleGrade = isNum(m.note && m.note.note) ? m.note.note : null;
-        const passed = (m.note && m.note.status) === "bestanden";
+      (Array.isArray(area.module) ? area.module : []).forEach((m) => {
+        m = m && typeof m === "object" ? m : {};
+        const n = idx++;
+        const name = safeText(m.name, `Module ${n + 1}`);
+        const rawParts = (Array.isArray(m.pruefungen) ? m.pruefungen : []).map((p, j) => parsePart(p, today, `${n}-${j}`, issues, name));
+        const { parts, weightsAssumed, weightSum } = normaliseWeights(rawParts);
+        if (weightSum !== null && Math.abs(weightSum - 1) > 0.01)
+          issues.push(`${name}: assessment weights add up to ${Math.round(weightSum * 100)}%, rescaled to 100%`);
+        const mg = usableGrade(m.note);
+        if (mg.invalid) issues.push(`${name}: grade ${m.note.note} is outside 1,0–4,0 and was ignored`);
+        const status = String((m.note && m.note.status) || "");
+        const passed = status === PASSED || !!(m.note && m.note.anerkannt && mg.grade !== null);
+        const moduleGrade = passed ? mg.grade : null; // a grade only counts once the module is passed
         const gradedParts = parts.filter((p) => p.grade !== null);
         let state;
         if (moduleGrade !== null) state = "graded";
@@ -100,12 +166,13 @@
         else state = "open";
         const dates = gradedParts.map((p) => p.date).filter(Boolean).sort();
         modules.push({
-          id: m.modulid,
-          name: m.name,
+          id: safeId(m.modulid, `m${n}`),
+          name,
           semester,
-          credits: isNum(m.credits) ? m.credits : 0,
+          credits: safeCredits(m.credits),
           grade: moduleGrade,
           state,
+          retake: mg.failed || parts.some((p) => p.failed),
           recognised: !!(m.note && m.note.anerkannt),
           parts,
           weightsAssumed,
@@ -118,14 +185,15 @@
         });
       });
     });
-    const plan = sb.studyplan || {};
+    const plan = sb.studyplan && typeof sb.studyplan === "object" ? sb.studyplan : {};
+    const okEcts = (v) => isNum(v) && v >= 0 && v <= 400;
     return {
       modules,
-      ectsEarned: isNum(plan.istects) ? plan.istects : sumCredits(modules.filter(isDone)),
-      ectsTotal: isNum(plan.planects) ? plan.planects : sumCredits(modules),
-      thesisAdmissionEcts: isNum(sb.zurZulassungThesisNotwendigeCredits)
-        ? sb.zurZulassungThesisNotwendigeCredits
-        : null,
+      issues,
+      gradingSystem: system,
+      ectsEarned: okEcts(plan.istects) ? plan.istects : sumCredits(modules.filter(isDone)),
+      ectsTotal: okEcts(plan.planects) && plan.planects > 0 ? plan.planects : sumCredits(modules) || 1,
+      thesisAdmissionEcts: okEcts(sb.zurZulassungThesisNotwendigeCredits) ? sb.zurZulassungThesisNotwendigeCredits : null,
     };
   }
 
@@ -260,6 +328,7 @@
         name: m.name,
         credits: m.credits,
         semester: m.semester,
+        retake: !!m.retake,
         openShare,
         knownSum,
         knownWeight: 1 - openShare,
@@ -331,7 +400,8 @@
       trajectory: trajectory(modules, opts),
       warnings: modules
         .filter((m) => m.weightsAssumed)
-        .map((m) => `${m.name}: assessment weights missing, assumed equal`),
+        .map((m) => `${m.name}: assessment weights missing, assumed equal`)
+        .concat(parsed.issues),
     };
   }
 
