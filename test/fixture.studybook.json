@@ -1,0 +1,62 @@
+{
+  "_comment": "Synthetic data in the shape of /campus/api/epm/studybook/{id}. Invented modules and grades.",
+  "zurZulassungThesisNotwendigeCredits": 53,
+  "studyplan": { "istects": 22, "planects": 60 },
+  "modulebereiche4list": [
+    {
+      "name": "1. Fachsemester",
+      "module": [
+        {
+          "modulid": 1, "name": "Module A", "credits": 10,
+          "note": { "note": 1.3, "status": "bestanden" },
+          "pruefungen": [
+            { "pruefungid": 11, "name": "Written Examination",
+              "note": { "note": 1.3, "status": "bestanden" },
+              "pruefungsergebnisse": [ { "onlydatum": "15.01.2026, 10:00" } ] }
+          ]
+        },
+        {
+          "modulid": 2, "name": "Module B", "credits": 6,
+          "note": { "note": 2.8, "status": "bestanden" },
+          "pruefungen": [
+            { "pruefungid": 21, "name": "Project Paper", "gewichtung": "75%",
+              "note": { "note": 2.7, "status": "bestanden" },
+              "pruefungsergebnisse": [ { "onlydatum": "05.02.2026, 00:00" } ] },
+            { "pruefungid": 22, "name": "Other Participation", "gewichtung": "25%",
+              "note": { "note": 3.3, "status": "bestanden" },
+              "pruefungsergebnisse": [ { "onlydatum": "20.01.2026, 00:00" } ] }
+          ]
+        },
+        {
+          "modulid": 3, "name": "Language Course", "credits": 6,
+          "note": { "status": "bestanden" },
+          "pruefungen": [ { "pruefungid": 31, "name": "Written Examination", "note": { "status": "bestanden" } } ]
+        }
+      ]
+    },
+    {
+      "name": "2. Fachsemester",
+      "module": [
+        {
+          "modulid": 4, "name": "Module C", "credits": 8,
+          "pruefungen": [
+            { "pruefungid": 41, "name": "Written Examination", "gewichtung": "75%",
+              "note": { "notekurz": "Prüfungsanmeldung möglich", "status": "anmeldbar" },
+              "pruefungsergebnisse": [ { "datum": "1. Prüfungsversuch: 13.07.2026, 10:00 Uhr" } ],
+              "pruefungstermin": { "datum": "2027-02-09" } },
+            { "pruefungid": 42, "name": "Other Participation", "gewichtung": "25%",
+              "note": { "note": 1.3, "status": "bestanden" },
+              "pruefungsergebnisse": [ { "onlydatum": "19.06.2026, 00:00" } ] }
+          ]
+        },
+        {
+          "modulid": 5, "name": "Thesis", "credits": 30,
+          "pruefungen": [
+            { "pruefungid": 51, "name": "Thesis", "gewichtung": "50%", "note": {} },
+            { "pruefungid": 52, "name": "Oral Examination", "gewichtung": "50%", "note": {} }
+          ]
+        }
+      ]
+    }
+  ]
+}
