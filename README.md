@@ -18,10 +18,15 @@ That response contains every module with ECTS, semester, grade and status, plus 
 
 ## What it shows
 
-- **Current average**: ECTS-weighted mean of graded modules, raw and truncated.
-- **Final range**: your best case (1,0 in everything still open) and worst case (4,0 in everything open), plus where you land if you keep your current average. It also shows how much of your final grade is already locked in.
-- **Trajectory**: each module grade over time, with the running ECTS-weighted average.
-- **Target setter**: pick a target final grade and see the average you need across all open assessments, the official grade step that achieves it, and how much of the remaining swing each open module controls. Partially graded modules count only their open share.
+Three views, switchable at any time (your choice is remembered):
+
+- **Dashboard**: full-screen overview. It shows your current average, where your plan lands, the range still possible, a per-module planner, your grade trajectory over time, and progress toward the ECTS you need for thesis admission.
+- **Drawer**: the same planner in a side panel, with "next up" first.
+- **Inline**: no panel at all. A summary bar sits above FOM's own grid, and every open module card gets a date chip, a grade picker and a "need ≥ x" hint.
+
+The core is a **per-module what-if**. For each open module you pick the grade you expect, and the final grade updates live. Modules you don't set run at your pace (your average, rounded to the nearest official grade). Set a target and Grade Lens tells you what the modules you left unset need for it. Partially graded modules (for example 25% participation already done) only use their open share.
+
+Your view, target and picks are saved in `chrome.storage.local` on your device. Grades themselves are never stored.
 
 ## Assumptions (read these)
 
@@ -50,10 +55,10 @@ node --test test/model.test.js
 `src/model.js` is pure and fully tested against `test/fixture.studybook.json`, which uses invented modules and grades in the real response shape. No real student data is in this repository.
 
 ```
-manifest.json      MV3, content scripts on oc-digital.de only, no permissions
+manifest.json      MV3, content scripts on oc-digital.de only, storage permission for view + picks
 src/hook.js        MAIN world, document_start: passive copy of the studybook response
 src/model.js       parsing, averages, final range, target maths (pure)
-src/panel.js       Shadow-DOM panel, SVG charts, no dependencies
+src/panel.js       three views (dashboard / drawer / inline), Shadow DOM, SVG charts, no dependencies
 test/              node:test unit tests + synthetic fixture
 ```
 

@@ -37,8 +37,20 @@
     return m ? Number(m[1]) : fallback;
   }
 
-  function parsePart(p) {
-    const res = (p.pruefungsergebnisse || [])[0] || {};
+  // Open part: the earliest date that is still ahead (a registered attempt or the scheduled
+  // termin); if all are past, the latest one. Graded part: when the result was taken.
+  function pickDate(p, grade, today) {
+    const resultDates = (p.pruefungsergebnisse || [])
+      .map((r) => parseGermanDate(r.onlydatum) || parseGermanDate(r.datum))
+      .filter(Boolean)
+      .sort();
+    if (grade !== null) return resultDates[resultDates.length - 1] || null;
+    const all = resultDates.concat(p.pruefungstermin && p.pruefungstermin.datum ? [p.pruefungstermin.datum] : []).sort();
+    if (all.length === 0) return null;
+    return all.find((d) => d >= today) || all[all.length - 1];
+  }
+
+  function parsePart(p, today) {
     const grade = isNum(p.note && p.note.note) ? p.note.note : null;
     return {
       id: p.pruefungid,
@@ -47,11 +59,7 @@
       weight: parseWeight(p.gewichtung),
       grade,
       status: (p.note && p.note.status) || null,
-      // graded: when it was taken; open: the next scheduled date (old attempts are ignored)
-      date:
-        grade !== null
-          ? parseGermanDate(res.onlydatum) || parseGermanDate(res.datum) || null
-          : (p.pruefungstermin && p.pruefungstermin.datum) || null,
+      date: pickDate(p, grade, today),
       attemptsAllowed: isNum(p.anzahlversuche) ? p.anzahlversuche : null,
     };
   }
@@ -70,15 +78,18 @@
     return { parts: parts.map((p) => ({ ...p, weight: eq })), weightsAssumed: true };
   }
 
-  function parseStudybook(sb) {
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+
+  function parseStudybook(sb, opts) {
     if (!sb || !Array.isArray(sb.modulebereiche4list)) {
       throw new Error("Unexpected studybook shape: modulebereiche4list missing");
     }
+    const today = (opts && opts.today) || todayISO();
     const modules = [];
     sb.modulebereiche4list.forEach((area, i) => {
       const semester = semesterFromAreaName(area.name, i + 1);
       (area.module || []).forEach((m) => {
-        const { parts, weightsAssumed } = normaliseWeights((m.pruefungen || []).map(parsePart));
+        const { parts, weightsAssumed } = normaliseWeights((m.pruefungen || []).map((p) => parsePart(p, today)));
         const moduleGrade = isNum(m.note && m.note.note) ? m.note.note : null;
         const passed = (m.note && m.note.status) === "bestanden";
         const gradedParts = parts.filter((p) => p.grade !== null);
@@ -220,6 +231,65 @@
     return { status, x, step, openEcts: d.openWeight, perModule };
   }
 
+  function nearestStep(x) {
+    if (!isNum(x)) return null;
+    return GRADE_STEPS.reduce((b, s) => (Math.abs(s - x) < Math.abs(b - x) - 1e-9 ? s : b), GRADE_STEPS[0]);
+  }
+
+  /*
+   * Per-module what-if.
+   * overrides: { [moduleId]: expected grade for that module's open assessments }.
+   * Modules without an override assume your current pace (nearest official step to your average).
+   * Also answers: given your overrides, what do the modules you left unset need for `target`?
+   */
+  function whatIf(modules, overrides, target, opts) {
+    overrides = overrides || {};
+    const d = decompose(modules);
+    if (d.gradableCredits === 0) return null;
+    const avg = weightedAverage(modules, opts).raw;
+    const pace = nearestStep(avg === null ? 2.0 : avg);
+    let fixed = d.fixed;
+    let unsetWeight = 0;
+    const perModule = d.open.map(({ module: m, knownSum, openShare }) => {
+      const ov = overrides[m.id];
+      const hasOv = isNum(ov);
+      if (hasOv) fixed += m.credits * openShare * ov;
+      else unsetWeight += m.credits * openShare;
+      return {
+        id: m.id,
+        name: m.name,
+        credits: m.credits,
+        semester: m.semester,
+        openShare,
+        knownSum,
+        knownWeight: 1 - openShare,
+        openParts: m.parts.filter((p) => p.grade === null).map((p) => ({ name: p.name, weight: p.weight, date: p.date })),
+        nextDate: m.nextDate,
+        expected: hasOv ? ov : pace,
+        source: hasOv ? "you" : "pace",
+        projectedModuleGrade: finalise(knownSum + openShare * (hasOv ? ov : pace), opts),
+        leverage: d.openWeight ? (m.credits * openShare) / d.openWeight : 0,
+        // best/worst this module can still end at
+        moduleBest: finalise(knownSum + openShare * BEST, opts),
+        moduleWorst: finalise(knownSum + openShare * WORST, opts),
+      };
+    });
+    perModule.sort((a, b) => (a.nextDate || "9999").localeCompare(b.nextDate || "9999"));
+    const projectedRaw = (fixed + unsetWeight * pace) / d.gradableCredits;
+    let need = null;
+    if (isNum(target)) {
+      const rawGoal = opts && opts.truncate === false ? target : target + 0.0999;
+      if (unsetWeight === 0) {
+        need = { status: fixed / d.gradableCredits <= rawGoal ? "met" : "missed", x: null, step: null };
+      } else {
+        const x = (rawGoal * d.gradableCredits - fixed) / unsetWeight;
+        const status = x < BEST ? "unreachable" : x >= WORST ? "secured-with-any-pass" : "reachable";
+        need = { status, x, step: status === "reachable" ? stepAtLeast(x) : null, unsetEcts: unsetWeight };
+      }
+    }
+    return { pace, projectedRaw, projected: finalise(projectedRaw, opts), need, perModule };
+  }
+
   function trajectory(modules, opts) {
     const g = modules
       .filter((m) => m.state === "graded" && m.credits > 0)
@@ -252,7 +322,7 @@
   }
 
   function analyse(sb, opts) {
-    const parsed = parseStudybook(sb);
+    const parsed = parseStudybook(sb, opts);
     const { modules } = parsed;
     return {
       ...parsed,
@@ -273,6 +343,8 @@
     weightedAverage,
     finalRange,
     requiredForTarget,
+    whatIf,
+    nearestStep,
     trajectory,
     stepAtLeast,
     gradeLabel,

@@ -6,7 +6,7 @@ const sb = require("./fixture.studybook.json");
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
 test("parses states, weights and dates", () => {
-  const { modules } = M.parseStudybook(sb);
+  const { modules } = M.parseStudybook(sb, { today: "2026-11-09" });
   const by = Object.fromEntries(modules.map((m) => [m.name, m]));
   assert.equal(by["Module A"].state, "graded");
   assert.equal(by["Language Course"].state, "passed-ungraded");
@@ -73,3 +73,42 @@ test("trajectory is chronological with a running average", () => {
   assert.equal(t[1].runningAverage, 1.8);
 });
 
+test("open part prefers an upcoming registered attempt over a later termin", () => {
+  const mini = { modulebereiche4list: [{ name: "1. Fachsemester", module: [
+    { modulid: 9, name: "Deutsch", credits: 6, pruefungen: [
+      { pruefungid: 91, name: "Written Examination", note: { status: "angemeldet" },
+        pruefungsergebnisse: [ { datum: "1. Prüfungsversuch: 13.11.2026, 10:00 Uhr" } ],
+        pruefungstermin: { datum: "2027-02-26" } } ] } ] }] };
+  const [m] = M.parseStudybook(mini, { today: "2026-11-09" }).modules;
+  assert.equal(m.nextDate, "2026-11-13");
+  const [later] = M.parseStudybook(mini, { today: "2026-12-01" }).modules;
+  assert.equal(later.nextDate, "2027-02-26");
+});
+
+test("what-if: unset modules run at pace, overrides change the projection", () => {
+  const { modules } = M.parseStudybook(sb, { today: "2026-11-09" });
+  // avg 1.8625 -> nearest step 2.0 (|1.86-2.0| = .14 < |1.86-1.7| = .16)
+  const base = M.whatIf(modules, {}, 1.5);
+  assert.equal(base.pace, 2.0);
+  close(base.projectedRaw, (32.4 + 36 * 2.0) / 54);
+  assert.equal(base.perModule.every((m) => m.source === "pace"), true);
+  // thesis expected 1.3 -> only Module C is left unset
+  const thesis = base.perModule.find((m) => m.name === "Thesis").id;
+  const w = M.whatIf(modules, { [thesis]: 1.3 }, 1.5);
+  close(w.projectedRaw, (32.4 + 30 * 1.3 + 6 * 2.0) / 54);
+  close(w.need.unsetEcts, 6);
+  close(w.need.x, (1.5999 * 54 - 32.4 - 39) / 6);
+  assert.equal(w.need.status, "reachable");
+  const c = w.perModule.find((m) => m.name === "Module C");
+  assert.equal(c.moduleBest, 1.0); // .25*1.3 + .75*1.0 = 1.075 -> 1.0
+  assert.equal(c.moduleWorst, 3.3); // .25*1.3 + .75*4.0 = 3.325 -> 3.3
+});
+
+test("what-if: everything set -> met or missed", () => {
+  const { modules } = M.parseStudybook(sb, { today: "2026-11-09" });
+  const ids = M.whatIf(modules, {}, 1.5).perModule.map((m) => m.id);
+  const all = Object.fromEntries(ids.map((id) => [id, 1.0]));
+  assert.equal(M.whatIf(modules, all, 1.5).need.status, "met");
+  const bad = Object.fromEntries(ids.map((id) => [id, 4.0]));
+  assert.equal(M.whatIf(modules, bad, 1.5).need.status, "missed");
+});
