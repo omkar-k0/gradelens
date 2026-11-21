@@ -219,6 +219,7 @@
   // Splits every gradable module into what is fixed and how much ECTS-weight is still open.
   function decompose(modules) {
     let fixed = 0; // sum of grade * credits already locked in
+    let gradedFixed = 0; // the same, from fully graded modules only
     let openWeight = 0; // credits * open share that a future grade x will fill
     let gradableCredits = 0;
     const open = [];
@@ -227,6 +228,7 @@
       gradableCredits += m.credits;
       if (m.state === "graded") {
         fixed += m.grade * m.credits;
+        gradedFixed += m.grade * m.credits;
         return;
       }
       const known = m.parts.filter((p) => p.grade !== null);
@@ -237,7 +239,35 @@
       openWeight += m.credits * restW;
       open.push({ module: m, knownSum, knownWeight: knownW, openShare: restW });
     });
-    return { fixed, openWeight, gradableCredits, open };
+    return { fixed, gradedFixed, openWeight, gradableCredits, open };
+  }
+
+  /*
+   * Exact projection: every open module ends at its own truncated module grade (as the portal
+   * shows module grades), and the final grade is the truncated ECTS-weighted mean of those.
+   * gradeFor(entry) gives the grade expected on that module's open assessments.
+   */
+  function projectFinal(d, gradeFor, opts) {
+    let sum = d.gradedFixed;
+    d.open.forEach((o) => {
+      sum += o.module.credits * finalise(o.knownSum + o.openShare * gradeFor(o), opts);
+    });
+    const raw = sum / d.gradableCredits;
+    return { raw, final: finalise(raw, opts) };
+  }
+
+  // Worst official step s that still reaches `target` when every entry in `free` gets s.
+  // Monotonic in s, so scan from best to worst and keep the last one that works.
+  function solveStep(d, free, fixedFor, target, opts) {
+    const meets = (s) => {
+      const p = projectFinal(d, (o) => (free.has(o) ? s : fixedFor(o)), opts);
+      return (opts && opts.truncate === false ? p.raw : p.final) <= target + 1e-9;
+    };
+    if (!meets(BEST)) return { status: "unreachable", step: null };
+    if (meets(WORST)) return { status: "secured-with-any-pass", step: null };
+    let step = BEST;
+    for (const s of GRADE_STEPS) if (meets(s)) step = s;
+    return { status: "reachable", step };
   }
 
   function finalRange(modules, opts) {
@@ -262,24 +292,21 @@
   }
 
   /*
-   * What uniform grade x across every open assessment gets the final grade to `target`?
-   * With truncation, any raw average below target + 0.1 truncates to <= target,
-   * so the raw goal is target + 0.0999.
+   * What official grade, the same in every open assessment, gets the final grade to `target`?
+   * Solved exactly with truncated module grades (see projectFinal). `x` is the old linear
+   * estimate on raw grades, kept for reference only.
    */
   function requiredForTarget(modules, target, opts) {
     const d = decompose(modules);
     if (d.gradableCredits === 0) return { status: "no-data" };
     const rawGoal = opts && opts.truncate === false ? target : target + 0.0999;
     if (d.openWeight === 0) {
-      const now = d.fixed / d.gradableCredits;
-      return { status: now <= rawGoal ? "already-secured" : "unreachable", x: null };
+      const now = projectFinal(d, () => 0, opts);
+      const v = opts && opts.truncate === false ? now.raw : now.final;
+      return { status: v <= target + 1e-9 ? "already-secured" : "unreachable", x: null };
     }
-    const x = (rawGoal * d.gradableCredits - d.fixed) / d.openWeight;
-    let status;
-    if (x < BEST) status = "unreachable";
-    else if (x >= WORST) status = "secured-with-any-pass";
-    else status = "reachable";
-    const step = status === "reachable" ? stepAtLeast(x) : null;
+    const x = (rawGoal * d.gradableCredits - d.fixed) / d.openWeight; // linear estimate, for reference
+    const { status, step } = solveStep(d, new Set(d.open), () => null, target, opts);
     const perModule = d.open
       .map(({ module: m, knownSum, openShare }) => {
         const nextParts = m.parts.filter((p) => p.grade === null);
@@ -344,19 +371,22 @@
       };
     });
     perModule.sort((a, b) => (a.nextDate || "9999").localeCompare(b.nextDate || "9999"));
-    const projectedRaw = (fixed + unsetWeight * pace) / d.gradableCredits;
+    const chosen = (o) => (isNum(overrides[o.module.id]) ? overrides[o.module.id] : pace);
+    const proj = projectFinal(d, chosen, opts);
     let need = null;
     if (isNum(target)) {
       const rawGoal = opts && opts.truncate === false ? target : target + 0.0999;
       if (unsetWeight === 0) {
-        need = { status: fixed / d.gradableCredits <= rawGoal ? "met" : "missed", x: null, step: null };
+        const v = opts && opts.truncate === false ? proj.raw : proj.final;
+        need = { status: v <= target + 1e-9 ? "met" : "missed", x: null, step: null };
       } else {
-        const x = (rawGoal * d.gradableCredits - fixed) / unsetWeight;
-        const status = x < BEST ? "unreachable" : x >= WORST ? "secured-with-any-pass" : "reachable";
-        need = { status, x, step: status === "reachable" ? stepAtLeast(x) : null, unsetEcts: unsetWeight };
+        const x = (rawGoal * d.gradableCredits - fixed) / unsetWeight; // linear estimate, for reference
+        const free = new Set(d.open.filter((o) => !isNum(overrides[o.module.id])));
+        const { status, step } = solveStep(d, free, chosen, target, opts);
+        need = { status, x, step, unsetEcts: unsetWeight };
       }
     }
-    return { pace, projectedRaw, projected: finalise(projectedRaw, opts), need, perModule };
+    return { pace, projectedRaw: proj.raw, projected: proj.final, need, perModule };
   }
 
   function trajectory(modules, opts) {
@@ -417,6 +447,7 @@
     nearestStep,
     trajectory,
     stepAtLeast,
+    projectFinal: (modules, gradeFor, opts) => projectFinal(decompose(modules), gradeFor, opts),
     gradeLabel,
     analyse,
   };
