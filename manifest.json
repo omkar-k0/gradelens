@@ -24,6 +24,7 @@
       ],
       "js": [
         "src/model.js",
+        "src/i18n.js",
         "src/panel.js"
       ],
       "run_at": "document_idle"
@@ -43,5 +44,15 @@
       "32": "icons/icon32.png"
     }
   },
-  "minimum_chrome_version": "111"
+  "minimum_chrome_version": "111",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "fonts/*.woff2"
+      ],
+      "matches": [
+        "https://oc-digital.de/*"
+      ]
+    }
+  ]
 }

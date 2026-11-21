@@ -20,5 +20,13 @@ with sync_playwright() as p:
     # target stepper inside inline bar
     pg.evaluate("document.querySelector('.gl-bar-host').shadowRoot.querySelector('[data-act=target][data-delta=\"-0.1\"]').click()"); pg.wait_for_timeout(200)
     print("target now:", pg.evaluate("document.querySelector('.gl-bar-host').shadowRoot.querySelector('.target b').textContent"))
+    # German: the language button switches every view's text
+    pg.evaluate("document.querySelector('.gl-bar-host').shadowRoot.querySelector('[data-act=lang]').click()"); pg.wait_for_timeout(250)
+    de = pg.evaluate("document.querySelector('.gl-bar-host').shadowRoot.querySelector('.kv .muted').textContent")
+    print("inline in German:", de, "->", "PASS" if de == "jetzt" else "FAIL")
+    pg.screenshot(path="test/e2e/out/v_inline_de.png")
+    pg.evaluate(f"{R}.querySelector('.launcher') && 0"); 
+    pg.evaluate("document.querySelector('.gl-bar-host').shadowRoot.querySelector('[data-view=dashboard]').click()"); pg.wait_for_timeout(250)
+    pg.screenshot(path="test/e2e/out/v_dashboard_de.png")
     print("errors:", errs)
     b.close()
