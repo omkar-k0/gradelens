@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/omkar-k0/gradelens/actions/workflows/ci.yml/badge.svg)](https://github.com/omkar-k0/gradelens/actions/workflows/ci.yml)
 
-A Chrome extension for students at FOM University of Applied Sciences. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target.
+A Chrome extension for students at FOM University of Applied Sciences. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target. In English and German.
 
 It runs entirely in your browser. There is no server, no account, and no data sent anywhere.
 
@@ -20,6 +20,8 @@ It runs entirely in your browser. There is no server, no account, and no data se
 - **Target setter:** choose a target final grade and see what the modules you haven't planned yet need.
 - **Final grade range:** best and worst case, and how much of your grade is already locked in.
 - **Exam countdown:** your next exam dates, with exams in the next 14 days highlighted.
+- **English and German**, following your browser language, with a switch in every view.
+- **Dark mode** for the panels and the popup, following your system setting.
 
 | Basic | Inline | Popup |
 |---|---|---|
@@ -32,11 +34,17 @@ The FOM Online Campus already loads your study book from an internal JSON endpoi
 ```
 src/hook.js      copies the study book response the portal already loads
 src/model.js     parsing, validation, averages, final range, what-if (pure functions)
+src/i18n.js      English and German text
 src/panel.js     the three views (Shadow DOM, SVG charts, no dependencies)
-popup/           toolbar popup to switch views
+popup/           toolbar popup to switch views and language
+fonts/           IBM Plex, bundled (no font server)
 ```
 
 ## Install
+
+From the Chrome Web Store: link follows once the listing is approved.
+
+From the source:
 
 1. Download or clone this repo.
 2. Open `chrome://extensions` and turn on **Developer mode**.
@@ -47,21 +55,31 @@ popup/           toolbar popup to switch views
 ## Assumptions
 
 - Grades are truncated after the first decimal, as the portal does for module grades.
-- The final grade is taken as the ECTS-weighted mean of all graded modules. This is not yet verified against the Prüfungsordnung.
+- The final grade is taken as the ECTS-weighted mean of all module grades, truncated after the first decimal. This is not yet confirmed against the Prüfungsordnung.
+- "What you need" is solved exactly: Grade Lens tries every official grade step, truncates each projected module grade, and reports the worst step that still reaches your target.
 - Only passed modules with a grade from 1,0 to 4,0 count. A failed attempt makes the module an open retake.
 
 ## Security
 
-All data from the portal is treated as untrusted. It is validated in one place and escaped when rendered. Messages from the page are only accepted for the study book URL. Permissions are limited to `storage` (your view and picks) and `activeTab` (for the popup).
+All data from the portal is treated as untrusted. It is validated in one place and escaped when rendered. Messages from the page are only accepted for the study book URL. Permissions are limited to `storage` (your view, language, target and picks) and `activeTab` (for the popup).
+
+One known limit: the study book reaches the extension through `window.postMessage` on the portal page, so another script running on that same page could also read it. That script could already read the same response from the portal itself, so Grade Lens adds no new access, but it is worth knowing.
+
+Privacy policy: https://omkarkhadilkar.dev/gradelens/privacy/
 
 ## Tests
 
 ```
-npm test            # unit and stress tests (21 tests, run in CI on every push)
+npm test            # unit, stress and language tests (25 tests, run in CI on every push)
 npm run test:e2e    # browser tests (Playwright; set CHROME_PATH to use a local Chrome)
+npm run build       # the Chrome Web Store zip in dist/
 ```
 
-CI runs the unit and stress tests on Node 22. The browser tests need a Chrome binary and stay local.
+CI runs the unit and stress tests on Node 22. The browser tests need a Chrome binary and stay local. The last browser test loads the built zip as a real extension against a stand-in FOM page.
+
+## Licence
+
+MIT, see `LICENSE`. Fonts: IBM Plex, SIL Open Font License (`fonts/OFL.txt`).
 
 ## Disclaimer
 

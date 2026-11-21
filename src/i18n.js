@@ -1,0 +1,248 @@
+/*
+ * Grade Lens text in English and German. Shared by the panel (content script) and the popup.
+ * Language: the user's choice if set, otherwise the browser language (German if it starts with "de").
+ * Values are strings with {placeholders}, or functions for anything that needs plurals.
+ * Placeholders are filled with already-escaped HTML by the caller where markup is wanted.
+ */
+(function (root) {
+  "use strict";
+  const pl = (n, one, many) => (n === 1 ? one : many);
+
+  const EN = {
+    brandSub: "computed in your browser · nothing leaves it",
+    close: "Close",
+    open: "Open Grade Lens",
+    viewAria: "View",
+    viewBasic: "Basic",
+    viewInline: "Inline",
+    viewAdvanced: "Advanced",
+    target: "Target",
+    targetAria: "Target final grade",
+    targetLower: "Target 0,1 lower (better grade)",
+    targetHigher: "Target 0,1 higher",
+    langSwitch: "Deutsch",
+    langSwitchAria: "Switch to German",
+    emptyNone: "No grade data on this page yet.",
+    emptyOpen: "Open Study progress",
+    emptyHow: "Grade Lens reads the study book that page already loads.",
+    errTooLarge: "The study book response was too large to read safely.",
+    errGrading: "{msg}. Grade Lens only understands FOM's 1,0–4,0 scale so far.",
+    errRead: "Could not read the study book: {msg}. FOM may have changed its data format.",
+    currentAverage: "Current average",
+    raw: "{raw} raw · {label}",
+    planLands: "Your plan lands at",
+    stillPossible: "Still possible",
+    locked: "{pct}% of the final grade is locked in",
+    planRemaining: "Plan your remaining exams",
+    trajectory: "Grade trajectory",
+    trajectoryShort: "Trajectory",
+    progress: "Progress",
+    ectsEarned: "ECTS earned",
+    ectsThesis: "ECTS for thesis admission",
+    nextUp: "Next up",
+    whereLand: "Where the final can land",
+    planNoteSome: (v) => `${v.mine} of ${v.total} modules set by you, the rest at your pace (${v.pace})`,
+    planNoteAll: "all open modules at your pace ({pace})",
+    needMet: "Your plan reaches <b>{t}</b>.",
+    needMissed: "Your plan lands at {p} and misses {t}. Pick better grades in some modules.",
+    needUnreachable: (v) => `<b>${v.t} is out of reach</b> with your current picks, even with 1,0 in the ${pl(v.n, "module", `${v.n} modules`)} you left open.`,
+    needSafe: (v) => `<b>${v.t} is safe.</b> Passing the ${pl(v.n, "module", `${v.n} modules`)} you left open is enough.`,
+    needStep: (v) => `For <b>${v.t}</b>, the ${pl(v.n, "module you haven't set needs", `${v.n} modules you haven't set need`)} <b class="stepv">${v.s}</b> or better${v.n === 1 ? "" : " in each"}.`,
+    resetPicks: "Reset picks",
+    pace: "pace {g}",
+    expectedFor: "Expected grade for {name}",
+    dateTbd: "date tbd",
+    today: " · today",
+    inDays: " · in {d} d",
+    spanAria: "Module can end between {b} and {w}; your pick gives {p}",
+    spanTip: "Module can still end between {b} and {w} · with this pick: {p}",
+    nothingOpen: "Nothing left open. Congratulations.",
+    alreadyGraded: " · {pct}% already graded",
+    retake: "retake",
+    retakeTip: "A previous attempt was not passed; this is a retake",
+    shareTip: "{pct}% of everything still open is in this module",
+    moduleWithPick: "Module grade with this pick",
+    thModule: "Module",
+    thNext: "Next date",
+    thShare: "Share of open",
+    thCanEnd: "Can still end",
+    thPick: "Your pick",
+    thModuleGrade: "Module",
+    rangeAria: "Final grade still possible from {b} to {w}; your plan lands at {p}; target {t}",
+    rangeTip: "Still possible: {b} (1,0 in everything open) to {w} (4,0 in everything open)",
+    currentTip: "Current average {c}",
+    planTip: "Your plan lands at {p}",
+    targetTip: "Target {t}",
+    lgPossible: "still possible",
+    lgPlan: "your plan {p}",
+    lgCurrent: "current {c}",
+    lgTarget: "target {t}",
+    trajNeedTwo: "Needs at least two graded modules.",
+    trajBetter: "better ↑",
+    trajSem: "Sem {n} · {d}",
+    trajTip: "{m} · {g} · {c} ECTS · {d} · running average {a}",
+    trajAria: "Module grades by exam date with running ECTS-weighted average, now {a}",
+    lgModuleGrade: "module grade",
+    lgRunning: "running average",
+    assumptions:
+      "Final grade assumed to be the ECTS-weighted mean of all graded modules (thesis included), truncated after the first decimal, as the portal does for module grades. Not yet confirmed against the Prüfungsordnung. Modules you don't set run at your pace (your average, rounded to the nearest official grade).",
+    warnWeights: "{name}: assessment weights missing, assumed equal",
+    now: "now",
+    yourPlan: "your plan",
+    possible: "possible",
+    pick: "pick",
+    needChip: "need ≥ {s}",
+    resTip: "Module grade with this pick · can still end {b}–{w}",
+    badgeNote: "Set your expected grade on each open module card below.",
+    badgeOff: "FOM's card layout doesn't match the data right now, so card badges are off. Use Basic or Advanced to plan.",
+    gradeLabels: ["sehr gut", "gut", "befriedigend", "ausreichend", "nicht bestanden"],
+    // popup
+    popFor: "for FOM",
+    popBasicDesc: "Side panel, next exams first",
+    popInlineDesc: "On FOM's own module cards",
+    popAdvancedDesc: "Full dashboard and planner",
+    popOpenFom: "Open the FOM Online Campus to use Grade Lens.",
+    popOpenProgress: "Open Study progress",
+    popReload: "Reload the FOM tab once so Grade Lens can attach.",
+    popNoGrades: "No grades loaded on this page yet.",
+    popGoProgress: "Go to Study progress",
+    popTarget: "target",
+    popNext: "Next up:",
+    popFooter: "Computed in your browser. Grades never leave it.",
+  };
+
+  // German. Wording to be checked by a native speaker before release.
+  const DE = {
+    brandSub: "im Browser berechnet · nichts verlässt ihn",
+    close: "Schließen",
+    open: "Grade Lens öffnen",
+    viewAria: "Ansicht",
+    viewBasic: "Basis",
+    viewInline: "Inline",
+    viewAdvanced: "Erweitert",
+    target: "Ziel",
+    targetAria: "Ziel-Endnote",
+    targetLower: "Ziel um 0,1 senken (bessere Note)",
+    targetHigher: "Ziel um 0,1 erhöhen",
+    langSwitch: "English",
+    langSwitchAria: "Auf Englisch umschalten",
+    emptyNone: "Auf dieser Seite sind noch keine Noten geladen.",
+    emptyOpen: "Studienverlauf öffnen",
+    emptyHow: "Grade Lens liest das Studienbuch, das diese Seite ohnehin lädt.",
+    errTooLarge: "Die Antwort mit dem Studienbuch war zu groß, um sie sicher zu lesen.",
+    errGrading: "{msg}. Grade Lens versteht bisher nur die FOM-Notenskala 1,0–4,0.",
+    errRead: "Das Studienbuch konnte nicht gelesen werden: {msg}. Möglicherweise hat die FOM ihr Datenformat geändert.",
+    currentAverage: "Aktueller Schnitt",
+    raw: "{raw} ungekürzt · {label}",
+    planLands: "Dein Plan ergibt",
+    stillPossible: "Noch möglich",
+    locked: "{pct} % der Endnote stehen schon fest",
+    planRemaining: "Plane deine restlichen Prüfungen",
+    trajectory: "Notenverlauf",
+    trajectoryShort: "Verlauf",
+    progress: "Fortschritt",
+    ectsEarned: "Erreichte ECTS",
+    ectsThesis: "ECTS für die Zulassung zur Thesis",
+    nextUp: "Als Nächstes",
+    whereLand: "Wo die Endnote landen kann",
+    planNoteSome: (v) => `${v.mine} von ${v.total} Modulen von dir gesetzt, der Rest in deinem Tempo (${v.pace})`,
+    planNoteAll: "alle offenen Module in deinem Tempo ({pace})",
+    needMet: "Dein Plan erreicht <b>{t}</b>.",
+    needMissed: "Dein Plan ergibt {p} und verfehlt {t}. Wähle in einigen Modulen bessere Noten.",
+    needUnreachable: (v) => `<b>${v.t} ist nicht erreichbar</b> mit deiner aktuellen Auswahl, selbst mit 1,0 in ${pl(v.n, "dem offenen Modul", `den ${v.n} offenen Modulen`)}.`,
+    needSafe: (v) => `<b>${v.t} ist sicher.</b> Es reicht, ${pl(v.n, "das offene Modul", `die ${v.n} offenen Module`)} zu bestehen.`,
+    needStep: (v) => `Für <b>${v.t}</b> ${pl(v.n, "braucht das Modul, das du nicht gesetzt hast,", `brauchen die ${v.n} Module, die du nicht gesetzt hast,`)} <b class="stepv">${v.s}</b> oder besser${v.n === 1 ? "" : " in jedem"}.`,
+    resetPicks: "Auswahl zurücksetzen",
+    pace: "Tempo {g}",
+    expectedFor: "Erwartete Note für {name}",
+    dateTbd: "Termin offen",
+    today: " · heute",
+    inDays: " · in {d} T.",
+    spanAria: "Das Modul kann zwischen {b} und {w} enden; deine Auswahl ergibt {p}",
+    spanTip: "Das Modul kann noch zwischen {b} und {w} enden · mit dieser Auswahl: {p}",
+    nothingOpen: "Nichts mehr offen. Glückwunsch!",
+    alreadyGraded: " · {pct} % schon benotet",
+    retake: "Wiederholung",
+    retakeTip: "Ein früherer Versuch wurde nicht bestanden; dies ist eine Wiederholung",
+    shareTip: "{pct} % von allem, was noch offen ist, liegt in diesem Modul",
+    moduleWithPick: "Modulnote mit dieser Auswahl",
+    thModule: "Modul",
+    thNext: "Nächster Termin",
+    thShare: "Anteil am Offenen",
+    thCanEnd: "Kann noch enden",
+    thPick: "Deine Wahl",
+    thModuleGrade: "Modul",
+    rangeAria: "Endnote noch möglich von {b} bis {w}; dein Plan ergibt {p}; Ziel {t}",
+    rangeTip: "Noch möglich: {b} (1,0 in allem Offenen) bis {w} (4,0 in allem Offenen)",
+    currentTip: "Aktueller Schnitt {c}",
+    planTip: "Dein Plan ergibt {p}",
+    targetTip: "Ziel {t}",
+    lgPossible: "noch möglich",
+    lgPlan: "dein Plan {p}",
+    lgCurrent: "aktuell {c}",
+    lgTarget: "Ziel {t}",
+    trajNeedTwo: "Braucht mindestens zwei benotete Module.",
+    trajBetter: "besser ↑",
+    trajSem: "Sem. {n} · {d}",
+    trajTip: "{m} · {g} · {c} ECTS · {d} · laufender Schnitt {a}",
+    trajAria: "Modulnoten nach Prüfungsdatum mit laufendem ECTS-gewichtetem Schnitt, aktuell {a}",
+    lgModuleGrade: "Modulnote",
+    lgRunning: "laufender Schnitt",
+    assumptions:
+      "Annahme: Die Endnote ist der ECTS-gewichtete Mittelwert aller benoteten Module (Thesis eingeschlossen), nach der ersten Nachkommastelle abgeschnitten, wie das Portal es bei Modulnoten tut. Noch nicht mit der Prüfungsordnung abgeglichen. Module, die du nicht setzt, laufen in deinem Tempo (dein Schnitt, auf die nächste offizielle Note gerundet).",
+    warnWeights: "{name}: Gewichtung der Prüfungsteile fehlt, gleich verteilt angenommen",
+    now: "jetzt",
+    yourPlan: "dein Plan",
+    possible: "möglich",
+    pick: "Wahl",
+    needChip: "nötig ≥ {s}",
+    resTip: "Modulnote mit dieser Auswahl · kann noch {b}–{w} enden",
+    badgeNote: "Setze deine erwartete Note auf jeder offenen Modulkarte unten.",
+    badgeOff: "Das Kartenlayout der FOM passt gerade nicht zu den Daten, daher sind die Karten-Hinweise aus. Plane mit Basis oder Erweitert.",
+    gradeLabels: ["sehr gut", "gut", "befriedigend", "ausreichend", "nicht bestanden"],
+    popFor: "für die FOM",
+    popBasicDesc: "Seitenleiste, nächste Prüfungen zuerst",
+    popInlineDesc: "Auf den Modulkarten der FOM",
+    popAdvancedDesc: "Volles Dashboard mit Planer",
+    popOpenFom: "Öffne den FOM Online Campus, um Grade Lens zu nutzen.",
+    popOpenProgress: "Studienverlauf öffnen",
+    popReload: "Lade den FOM-Tab einmal neu, damit Grade Lens sich verbinden kann.",
+    popNoGrades: "Auf dieser Seite sind noch keine Noten geladen.",
+    popGoProgress: "Zum Studienverlauf",
+    popTarget: "Ziel",
+    popNext: "Als Nächstes:",
+    popFooter: "Im Browser berechnet. Deine Noten verlassen ihn nie.",
+  };
+
+  const DICTS = { en: EN, de: DE };
+  let lang = "en";
+
+  const browserLang = () => {
+    try {
+      return /^de\b/i.test(navigator.language || "") ? "de" : "en";
+    } catch (_) {
+      return "en";
+    }
+  };
+
+  const api = {
+    DICTS,
+    get lang() {
+      return lang;
+    },
+    // choice: "en", "de" or anything else for the browser language
+    setLang(choice) {
+      lang = choice === "en" || choice === "de" ? choice : browserLang();
+      return lang;
+    },
+    t(key, vars) {
+      const v = DICTS[lang][key] ?? EN[key];
+      if (typeof v === "function") return v(vars || {});
+      if (typeof v !== "string") return v;
+      return v.replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] != null ? String(vars[k]) : ""));
+    },
+  };
+  api.setLang("auto");
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.GradeLensI18n = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);

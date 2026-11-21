@@ -90,15 +90,25 @@ test("what-if: unset modules run at pace, overrides change the projection", () =
   // avg 1.8625 -> nearest step 2.0 (|1.86-2.0| = .14 < |1.86-1.7| = .16)
   const base = M.whatIf(modules, {}, 1.5);
   assert.equal(base.pace, 2.0);
-  close(base.projectedRaw, (32.4 + 36 * 2.0) / 54);
+  // each open module ends at its own truncated module grade, as the portal shows module grades
+  const trunc = (x) => Math.floor(x * 10 + 1e-9) / 10;
+  const graded = modules.filter((m) => m.state === "graded").reduce((a, m) => a + m.grade * m.credits, 0);
+  const proj = (picks) =>
+    (graded + base.perModule.reduce((a, m) => a + m.credits * trunc(m.knownSum + m.openShare * (picks[m.id] ?? 2.0)), 0)) / 54;
+  close(base.projectedRaw, proj({}));
   assert.equal(base.perModule.every((m) => m.source === "pace"), true);
   // thesis expected 1.3 -> only Module C is left unset
   const thesis = base.perModule.find((m) => m.name === "Thesis").id;
   const w = M.whatIf(modules, { [thesis]: 1.3 }, 1.5);
-  close(w.projectedRaw, (32.4 + 30 * 1.3 + 6 * 2.0) / 54);
+  close(w.projectedRaw, proj({ [thesis]: 1.3 }));
   close(w.need.unsetEcts, 6);
-  close(w.need.x, (1.5999 * 54 - 32.4 - 39) / 6);
   assert.equal(w.need.status, "reachable");
+  // the step is exact: it reaches the target, and the next worse step does not
+  const cId = base.perModule.find((m) => m.name === "Module C").id;
+  const steps = M.GRADE_STEPS;
+  const k = steps.indexOf(w.need.step);
+  assert.ok(trunc(proj({ [thesis]: 1.3, [cId]: w.need.step })) <= 1.5);
+  if (k < steps.length - 1) assert.ok(trunc(proj({ [thesis]: 1.3, [cId]: steps[k + 1] })) > 1.5);
   const c = w.perModule.find((m) => m.name === "Module C");
   assert.equal(c.moduleBest, 1.0); // .25*1.3 + .75*1.0 = 1.075 -> 1.0
   assert.equal(c.moduleWorst, 3.3); // .25*1.3 + .75*4.0 = 3.325 -> 3.3
@@ -111,4 +121,18 @@ test("what-if: everything set -> met or missed", () => {
   assert.equal(M.whatIf(modules, all, 1.5).need.status, "met");
   const bad = Object.fromEntries(ids.map((id) => [id, 4.0]));
   assert.equal(M.whatIf(modules, bad, 1.5).need.status, "missed");
+});
+
+test("required step is exact under truncation and never stricter than the linear estimate", () => {
+  const { modules } = M.parseStudybook(sb, { today: "2026-11-09" });
+  for (let target = 1.0; target <= 3.5 + 1e-9; target += 0.1) {
+    const t = Math.round(target * 10) / 10;
+    const r = M.requiredForTarget(modules, t);
+    if (r.status !== "reachable") continue;
+    const old = M.stepAtLeast(r.x);
+    // truncation only ever helps the student, so the exact step is the same or more lenient
+    if (old !== null) assert.ok(r.step >= old - 1e-9, `target ${t}: exact ${r.step} vs linear ${old}`);
+    const f = M.projectFinal(modules, () => r.step);
+    assert.ok(f.final <= t + 1e-9, `target ${t}: step ${r.step} gives ${f.final}`);
+  }
 });
