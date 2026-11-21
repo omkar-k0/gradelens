@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/omkar-k0/gradelens/actions/workflows/ci.yml/badge.svg)](https://github.com/omkar-k0/gradelens/actions/workflows/ci.yml)
 
-A Chrome extension for students at FOM University of Applied Sciences. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target. In English and German.
+A Chrome extension for students at FOM University of Applied Sciences. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target. In English and German. Shared on GitHub for feedback from FOM students and staff.
 
 It runs entirely in your browser. There is no server, no account, and no data sent anywhere.
 
@@ -42,15 +42,24 @@ fonts/           IBM Plex, bundled (no font server)
 
 ## Install
 
-From the Chrome Web Store: link follows once the listing is approved.
+Grade Lens is shared through GitHub for now, not the Chrome Web Store.
 
-From the source:
-
-1. Download or clone this repo.
-2. Open `chrome://extensions` and turn on **Developer mode**.
-3. Click **Load unpacked** and select the repo folder.
+1. On this page click **Code → Download ZIP** and unzip it (or `git clone` the repo).
+2. Open `chrome://extensions` and turn on **Developer mode** (top right).
+3. Click **Load unpacked** and pick the unzipped folder (the one with `manifest.json` in it).
 4. Open the FOM Online Campus → **Study program & exams → Study progress**.
-5. Click the GradeLens icon in the toolbar and pick a view.
+5. Click the Grade Lens icon in the toolbar and pick a view.
+
+Chrome shows a note about developer-mode extensions when it starts; that is normal for anything not installed from the store.
+
+## Feedback
+
+Trying it out? I'd like to hear what works and what doesn't.
+
+- **[Open a feedback issue](https://github.com/omkar-k0/gradelens/issues/new?template=feedback.md)** (a short form, no code needed), or
+- e-mail me at omkarkhadilkar8@gmail.com.
+
+Please never send screenshots with your real grades or name. Describe the problem in words, or use the synthetic data in `test/`.
 
 ## Assumptions
 
@@ -72,7 +81,7 @@ Privacy policy: https://omkarkhadilkar.dev/gradelens/privacy/
 ```
 npm test            # unit, stress and language tests (25 tests, run in CI on every push)
 npm run test:e2e    # browser tests (Playwright; set CHROME_PATH to use a local Chrome)
-npm run build       # the Chrome Web Store zip in dist/
+npm run build       # a clean zip of the extension in dist/
 ```
 
 CI runs the unit and stress tests on Node 22. The browser tests need a Chrome binary and stay local. The last browser test loads the built zip as a real extension against a stand-in FOM page.

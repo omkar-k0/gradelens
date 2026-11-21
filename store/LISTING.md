@@ -1,5 +1,7 @@
 # Chrome Web Store listing
 
+> Not submitted. Grade Lens is shared through GitHub for now (decided 21 Nov 2026). Kept here in case of a store release later.
+
 Everything to paste into the developer dashboard for v1.0.0. Upload file: `dist/gradelens-1.0.0.zip` (`npm run build`).
 
 ## Store listing
