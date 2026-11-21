@@ -1,5 +1,7 @@
 # GradeLens
 
+[![ci](https://github.com/omkar-k0/gradelens/actions/workflows/ci.yml/badge.svg)](https://github.com/omkar-k0/gradelens/actions/workflows/ci.yml)
+
 A Chrome extension for students at FOM University of Applied Sciences. It shows your grade trajectory, the range your final grade can still land in, and what you need in each open exam to hit a target.
 
 It runs entirely in your browser. There is no server, no account, and no data sent anywhere.
@@ -55,9 +57,11 @@ All data from the portal is treated as untrusted. It is validated in one place a
 ## Tests
 
 ```
-npm test            # unit and stress tests
+npm test            # unit and stress tests (21 tests, run in CI on every push)
 npm run test:e2e    # browser tests (Playwright; set CHROME_PATH to use a local Chrome)
 ```
+
+CI runs the unit and stress tests on Node 22. The browser tests need a Chrome binary and stay local.
 
 ## Disclaimer
 
