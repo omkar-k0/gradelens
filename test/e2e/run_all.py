@@ -8,6 +8,13 @@ try:
         print(f"== {t} =="); out = subprocess.run([sys.executable, f"test/e2e/{t}"], capture_output=True, text=True)
         print(out.stdout.strip()); 
         if out.returncode or "FAIL" in out.stdout or "Error" in out.stderr: failed = True; print(out.stderr[-2000:])
+    # the built extension, loaded for real in Chrome against a fake oc-digital.de page
+    import tempfile, zipfile
+    z = subprocess.run(["sh", "scripts/build.sh"], capture_output=True, text=True).stdout.split()[0]
+    d = tempfile.mkdtemp(); zipfile.ZipFile(z).extractall(d)
+    print("== extension.py =="); out = subprocess.run([sys.executable, "test/e2e/extension.py", d], capture_output=True, text=True)
+    print(out.stdout.strip())
+    if out.returncode: failed = True; print(out.stderr[-2000:])
 finally:
     srv.terminate()
 sys.exit(1 if failed else 0)

@@ -746,6 +746,7 @@
       border-left: 2px solid var(--accent); border-radius: 2px; padding: 12px 16px; }
     .ib-left { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
     .ib-left strong { font-size: 15px; font-weight: 500; }
+    .ib-right { display: flex; align-items: center; gap: 14px; }
     .kv { display: inline-flex; align-items: baseline; gap: 6px; } .kv b { font-size: 20px; font-weight: 400; font-variant-numeric: tabular-nums; }
     .ib-need { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
     .ib-need .need { margin: 0; padding: 6px 10px; }`;
